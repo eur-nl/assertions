@@ -352,18 +352,32 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
     if _is_iterable(expect):
         if not _is_iterable(test):
             return f'{subject} {type(test).__name__} {test} expected to be iterable'
-        expect_list = list(expect)
-        test_list = list(test)
+        
+        if _is_dict_like(expect):
+            if not _is_dict_like(test):
+                return f'{subject} {type(test).__name__} {test} expected to be dict-like'
+            indices = sorted(list(expect.keys()))
+            if indices != sorted(list(test.keys())):
+                return f'{subject} {type(test).__name__} {test} expected to contain keys ' \
+                       + ', '.join(f'{idx!r}' for idx in indices)
+            expect_list = list(expect.values())
+            test_list = list(test.values())
+
+        else:
+            indices = list(range(len(expect)))
+            expect_list = list(expect)
+            test_list = list(test)
+        
         expect_len = len(expect_list)
-        test_len = len(expect_list)
+        test_len = len(test_list)
         if expect_len != test_len:
             return f'{subject} {type(test).__name__} {test} expected to contain' \
                  f' {expect_len} items, but got {test_len}'
 
-        for i, (expect_item, test_item) in enumerate(zip(expect_list, test_list)):
+        for i, expect_item, test_item in zip(indices, expect_list, test_list):
             msg = _check_returned(expect_item, test_item, subject=subject, check_value=check_value, _depth=_depth - 1)
             if msg:
-                return f'{subject} {type(test).__name__} {test} at index {i}: {msg}'
+                return f'{subject} {type(test).__name__} {test} at index {i!r}: {msg}'
 
     elif check_value and expect != test:
         return f'{subject} {type(test).__name__} {test} is unequal' \
@@ -448,6 +462,11 @@ def _is_iterable(it):
     return callable(getattr(it, '__iter__', False))
 
 
+def _is_dict_like(it):
+    return callable(getattr(it, 'keys', False)) \
+        and callable(getattr(it, 'values', False))
+
+
 def _serialize(expect_returned, check_value=True, _depth=MAX_DEPTH):
     if _depth <= 0:
         raise RuntimeError(f'_serialize reached maximum depth of {MAX_DEPTH}')
@@ -463,4 +482,5 @@ def _serialize(expect_returned, check_value=True, _depth=MAX_DEPTH):
 
 
 print('Assertions imported OK')
+
 
