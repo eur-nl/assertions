@@ -338,7 +338,7 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
 
     expect_type = type(expect)
     if not isinstance(test, expect_type):
-        return f'{subject} Function returned {type(test).__name__} {test}' \
+        return f'{subject} was {type(test).__name__} {test}' \
                + f' but a value of type {expect_type} was expected' 
     if expect_type is str:
         return _check_pattern(expect, test, subject=subject)
