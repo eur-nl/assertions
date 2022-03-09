@@ -356,13 +356,14 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
         if _is_dict_like(expect):
             if not _is_dict_like(test):
                 return f'{subject} {type(test).__name__} {test} expected to be dict-like'
-            indices = sorted(list(expect.keys()))
-            if indices != sorted(list(test.keys())):
+            indices = sorted(expect.keys())
+            if indices != sorted(test.keys()):
                 return f'{subject} {type(test).__name__} {test} expected to contain keys ' \
                        + ', '.join(f'{idx!r}' for idx in indices)
-            expect_list = list(expect.values())
-            test_list = list(test.values())
-
+            if test == expect:
+                return None
+            return f'{subject} {type(test).__name__} {test} expected to contain' \
+                 f' {expect}, but got {test}'
         else:
             indices = list(range(len(expect)))
             expect_list = list(expect)
