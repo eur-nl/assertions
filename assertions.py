@@ -362,7 +362,7 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
                        + ', '.join(f'{idx!r}' for idx in indices)
             if test == expect:
                 return None
-            return f'{subject} {type(test).__name__} {test} expected to contain' \
+            return f'{subject} {type(test).__name__} dictionary expected to contain' \
                  f' {expect}, but got {test}'
         else:
             indices = list(range(len(expect)))
