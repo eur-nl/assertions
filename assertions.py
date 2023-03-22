@@ -197,11 +197,12 @@ def check_assertion(assignment, label=None, fail_fast=True):
             _error(error_returned)
             _print()
 
-        # Check printed lines
-        error_printed = _check_printed(expect_printed, printed)
-        if error_printed is not None:
-            errors += 1
-            _print()
+        # Check printed lines, if applicable (expect_printed should not be empty string)
+        if expect_printed != '':
+            error_printed = _check_printed(expect_printed, printed)
+            if error_printed is not None:
+                errors += 1
+                _print()
 
         if errors == 0:
             _print(' OK')
