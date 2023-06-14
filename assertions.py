@@ -44,6 +44,9 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
 
     save_expectations = list()
 
+    if _lazy:
+        print(f'Warning, your reference implementation will NOT be tested!')
+
     for expectation in expectations:
 
         # Validate whether expectation is dictionary
@@ -71,14 +74,20 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
                 f'Teacher bug; inputs must be list or tuple, got "{expect_inputs}"'
                 expect_inputs = tuple(str(i) for i in expect_inputs)
 
+        # Validate check_value
+        check_value = expectation.get(CHECK_VALUE)
+        if check_value is None:
+            check_value = True
+        assert type(check_value) is bool, \
+        f'Teacher bug; check_value must be a boolean, got {type(check_value)}'
+
         # In lazy mode, we assume that the reference implementation is correct,
         # and we use it to cheat to obtain expected printed, returned and raised.
         # Otherwise, they have to be provided explicitly, meaning that we will
-        # effectively also test the reference implementation for correctness.
+        # effectively also test the reference implementation fo r correctness.
 
         if _lazy:
-            print(f'Warning, your reference implementation will NOT be tested!')
-            cheating = _call_function(reference, arguments, expect_inputs)
+            cheating = _call_function(reference, deepcopy(arguments), expect_inputs)
             expect_printed, expect_returned, expect_raised = cheating
         else:
             # Validate expected printed lines, cleaned up and stripped
@@ -100,29 +109,22 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
                 and tuple(type(r) for r in expect_raised) == (type, str)), \
                 f'Teacher bug; exception must be type, str or (type, str), got "{expect_raised}"'
 
+            # Call the reference function with the current arguments
+            printed, returned, raised = _call_function(reference, deepcopy(arguments), expect_inputs)
 
-        # Validate check_value
-        check_value = expectation.get(CHECK_VALUE)
-        if check_value is None:
-            check_value = True
+            # Check printed lines
+            error_printed = _check_printed(expect_printed, printed)
+            assert error_printed is None, 'Teacher bug; printed output did not match!'
 
-        # Call the reference function with the current arguments
-        printed, returned, raised = _call_function(reference, arguments, expect_inputs)
+            # Check returned value
+            error_returned = _check_returned(expect_returned, returned, check_value=check_value)
+            assert error_returned is None, f'Teacher bug; {error_returned}'
 
-        # Check printed lines
-        error_printed = _check_printed(expect_printed, printed)
-        assert error_printed is None, 'Teacher bug; printed output did not match!'
-
-        # Check returned value
-        error_returned = _check_returned(expect_returned, returned, check_value=check_value)
-        assert error_returned is None, f'Teacher bug; {error_returned}'
-
-        # Check raised exception
-        error_raised = _check_raised(expect_raised,  raised)
-        assert error_raised is None, f'Teacher bug; {error_raised}'
+            # Check raised exception
+            error_raised = _check_raised(expect_raised,  raised)
+            assert error_raised is None, f'Teacher bug; {error_raised}'
 
         # Reference function behaves as expected, add to our saved cases.
-
         expectation = {
         }
         if arguments:
