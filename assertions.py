@@ -22,17 +22,25 @@ EXPECT_INPUTS = 'expect_inputs'
 CHECK_VALUE = 'check_value'
 
 
-def create_assertion(reference, expectations, label=None, assertion_file=ASSERTION_FILE, _debug=True):
+
+def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _debug=True, _lazy=False):
     """Run teacher's function, check expectations, and store in assertions.pickle"""
 
     # Validate function arguments
+
     assert type(reference) is types.FunctionType, \
         f'Teacher bug; reference must be a function, got {type(reference)}'
-    
+
     assert isinstance(expectations, (list, tuple)), \
         f'Teacher bug; expectations must be a list or tuple, got {type(expectations)}'
 
-    label = reference.__name__  # Ignore argument, always use function name
+    assert type(_debug) is bool, \
+        f'Teacher bug; _debug must be a boolean, got {type(_debug)}'
+
+    assert type(_lazy) is bool, \
+        f'Teacher bug; _lazy must be a boolean, got {type(_lazy)}'
+
+    label = reference.__name__
 
     save_expectations = list()
 
@@ -53,34 +61,45 @@ def create_assertion(reference, expectations, label=None, assertion_file=ASSERTI
                 # Not an iterable, make it so
                 arguments = (arguments,)
 
-        # Validate expected printed lines, cleaned up and stripped
-        expect_printed = _clean_output(expectation.get(EXPECT_PRINTED))
-
-        # Validate expected return value
-        expect_returned = expectation.get(EXPECT_RETURNED)
-
-        # Validate expected exception type, str, or (type, str)
-        expect_raised = expectation.get(EXPECT_RAISED)
-        if type(expect_raised) is str:
-            expect_raised = None, expect_raised
-        elif type(expect_raised) is type:
-            expect_raised = expect_raised, None
-        elif isinstance(expect_raised, BaseException):
-            expect_raised = type(expect_raised), str(expect_raised)
-        elif expect_raised is not None:
-            assert (type(expect_raised) is tuple \
-            and tuple(type(r) for r in expect_raised) == (type, str)), \
-            f'Teacher bug; exception must be type, str or (type, str), got "{expect_raised}"'
-
         # Validate expected inputs
         expect_inputs = expectation.get(EXPECT_INPUTS)
         if expect_inputs is not None:
             if isinstance(expect_inputs, str):
-                expect_inputs = (expect_inputs, )
+                expect_inputs = (expect_inputs,)
             else:
                 assert type(expect_inputs) in {list, tuple}, \
                 f'Teacher bug; inputs must be list or tuple, got "{expect_inputs}"'
                 expect_inputs = tuple(str(i) for i in expect_inputs)
+
+        # In lazy mode, we assume that the reference implementation is correct,
+        # and we use it to cheat to obtain expected printed, returned and raised.
+        # Otherwise, they have to be provided explicitly, meaning that we will
+        # effectively also test the reference implementation for correctness.
+
+        if _lazy:
+            print(f'Warning, your reference implementation will NOT be tested!')
+            cheating = _call_function(reference, arguments, expect_inputs)
+            expect_printed, expect_returned, expect_raised = cheating
+        else:
+            # Validate expected printed lines, cleaned up and stripped
+            expect_printed = _clean_output(expectation.get(EXPECT_PRINTED))
+
+            # Validate expected return value
+            expect_returned = expectation.get(EXPECT_RETURNED)
+
+            # Validate expected exception type, str, or (type, str)
+            expect_raised = expectation.get(EXPECT_RAISED)
+            if type(expect_raised) is str:
+                expect_raised = None, expect_raised
+            elif type(expect_raised) is type:
+                expect_raised = expect_raised, None
+            elif isinstance(expect_raised, BaseException):
+                expect_raised = type(expect_raised), str(expect_raised)
+            elif expect_raised is not None:
+                assert (type(expect_raised) is tuple \
+                and tuple(type(r) for r in expect_raised) == (type, str)), \
+                f'Teacher bug; exception must be type, str or (type, str), got "{expect_raised}"'
+
 
         # Validate check_value
         check_value = expectation.get(CHECK_VALUE)

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import sys
 from contextlib import redirect_stdout, redirect_stderr
+from copy import deepcopy
 from io import StringIO
 from itertools import product
 from pathlib import Path
@@ -38,6 +39,42 @@ def _reference_debug(x, y=7):
         print('Eggs')
         y = int(input())
     return x + y
+
+
+def _reference_call_by_reference(a_dict):
+    for k1, v in a_dict.items():
+        assert isinstance(v, dict)
+        for k2, w in v.items():
+            assert isinstance(w, int)
+            if w < 0:
+                v[k2] = 0
+            elif w > 100:
+                v[k2] = 100
+    return a_dict
+
+
+_test_create_assertion_call_by_reference_args = ({
+    'a': {
+        'x': -1,
+        'y': 50,
+        'z': 101,
+    },
+    'b': {
+        'x': -1000,
+        'y': 1000,
+    }
+},)
+_test_create_assertion_call_by_reference_return = {
+    'a': {
+        'x': 0,
+        'y': 50,
+        'z': 100,
+    },
+    'b': {
+        'x': 0,
+        'y': 100,
+    }
+}
 
 
 class TestAssertions(TestCase):
@@ -706,6 +743,77 @@ class TestAssertions(TestCase):
                     "unsupported operand type(s) for +: 'int' and 'str'")}]
 """)
         self.assertEqual(stderr, '')
+
+
+
+
+    def test_create_assertion_call_by_reference_proper(self):
+        self._delete_pickle()
+
+        assertions.create_assertion(
+            _reference_call_by_reference,
+            [
+                {
+                    assertions.ARGUMENTS: _test_create_assertion_call_by_reference_args,
+                    assertions.EXPECT_RETURNED: _test_create_assertion_call_by_reference_return
+                }
+            ],
+            assertion_file=_TEST_PICKLE_FILE,
+            _debug=False
+        )
+
+        pickled = self._load_pickle()
+        self.assertIsInstance(pickled, dict)
+        self.assertDictEqual(pickled, {
+            '_reference_call_by_reference': [
+                {
+                    'arguments': _test_create_assertion_call_by_reference_args,
+                    'expect_returned': _test_create_assertion_call_by_reference_return
+                }
+            ]
+        })
+
+        self._delete_pickle()
+
+
+    def test_create_assertion_call_by_reference_lazy(self):
+        self._delete_pickle()
+        self.maxDiff = 2048
+
+        lazy_args = deepcopy(_test_create_assertion_call_by_reference_args)
+        lazy_return = _reference_call_by_reference(*lazy_args)
+
+        with StringIO() as out, StringIO() as err, \
+                redirect_stdout(out), redirect_stderr(err):
+            assertions.create_assertion(
+                _reference_call_by_reference,
+                [
+                    {
+                        assertions.ARGUMENTS: _test_create_assertion_call_by_reference_args,
+                        assertions.EXPECT_RETURNED: lazy_return
+                    }
+                ],
+                assertion_file=_TEST_PICKLE_FILE,
+                _debug=False,
+                _lazy=True
+            )
+            stdout = out.getvalue()
+            stderr = err.getvalue()
+
+        self.assertEqual(stdout, 'Warning, your reference implementation will NOT be tested!\n')
+        self.assertEqual(stderr, '')
+        pickled = self._load_pickle()
+        self.assertIsInstance(pickled, dict)
+        self.assertDictEqual(pickled, {
+            '_reference_call_by_reference': [
+                {
+                    'arguments': _test_create_assertion_call_by_reference_args,
+                    'expect_returned': _test_create_assertion_call_by_reference_return
+                }
+            ]
+        })
+
+        self._delete_pickle()
 
 
 if __name__ == '__main__':
