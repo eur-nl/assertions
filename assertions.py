@@ -84,7 +84,7 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
         # In lazy mode, we assume that the reference implementation is correct,
         # and we use it to cheat to obtain expected printed, returned and raised.
         # Otherwise, they have to be provided explicitly, meaning that we will
-        # effectively also test the reference implementation fo r correctness.
+        # effectively also test the reference implementation for correctness.
 
         if _lazy:
             cheating = _call_function(reference, deepcopy(arguments), expect_inputs)

@@ -749,7 +749,6 @@ class TestAssertions(TestCase):
 
     def test_create_assertion_call_by_reference_proper(self):
         self._delete_pickle()
-        self.maxDiff = 2048
 
         assertions.create_assertion(
             _reference_call_by_reference,
@@ -779,7 +778,6 @@ class TestAssertions(TestCase):
 
     def test_create_assertion_call_by_reference_lazy(self):
         self._delete_pickle()
-        self.maxDiff = 2048
 
         with StringIO() as out, StringIO() as err, \
                 redirect_stdout(out), redirect_stderr(err):
