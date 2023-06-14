@@ -5,11 +5,14 @@ import sys
 import types
 
 from contextlib import redirect_stdout
-from itertools import zip_longest
+from copy import deepcopy
+from itertools import chain, zip_longest
 
 # Constants
-assertion_file = 'assertions.pickle'
+from pprint import pprint
+
 student_user = True
+ASSERTION_FILE = 'assertions.pickle'
 MAX_DEPTH = 20
 ARGUMENTS = 'arguments'
 EXPECT_PRINTED = 'expect_printed'
@@ -19,15 +22,15 @@ EXPECT_INPUTS = 'expect_inputs'
 CHECK_VALUE = 'check_value'
 
 
-def create_assertion(reference, expectations, label=None):
+def create_assertion(reference, expectations, label=None, assertion_file=ASSERTION_FILE, _debug=True):
     """Run teacher's function, check expectations, and store in assertions.pickle"""
 
     # Validate function arguments
     assert type(reference) is types.FunctionType, \
         f'Teacher bug; reference must be a function, got {type(reference)}'
     
-    assert type(expectations) is list, \
-        f'Teacher bug; expectations must be a list, got {type(expectations)}'
+    assert isinstance(expectations, (list, tuple)), \
+        f'Teacher bug; expectations must be a list or tuple, got {type(expectations)}'
 
     label = reference.__name__  # Ignore argument, always use function name
 
@@ -41,11 +44,14 @@ def create_assertion(reference, expectations, label=None):
 
         # Validate arguments, coerce it to tuple if necessary
         arguments = expectation.get(ARGUMENTS)
-        try:
-            arguments = tuple(arguments)
-        except TypeError:
-            # Not an iterable, make it so
-            arguments = (arguments,)
+        if arguments is None:
+            arguments = ()
+        else:
+            try:
+                arguments = tuple(arguments)
+            except TypeError:
+                # Not an iterable, make it so
+                arguments = (arguments,)
 
         # Validate expected printed lines, cleaned up and stripped
         expect_printed = _clean_output(expectation.get(EXPECT_PRINTED))
@@ -58,20 +64,23 @@ def create_assertion(reference, expectations, label=None):
         if type(expect_raised) is str:
             expect_raised = None, expect_raised
         elif type(expect_raised) is type:
-            expect_raised = expect_raised.__name__, None
-        elif type(expect_raised) is tuple \
-        and tuple(type(r) for r in expect_raised) == (type, str):
-            expect_raised = expect_raised[0].__name__, expect_raised[1]
-        else:
-            assert expect_raised is None, \
+            expect_raised = expect_raised, None
+        elif isinstance(expect_raised, BaseException):
+            expect_raised = type(expect_raised), str(expect_raised)
+        elif expect_raised is not None:
+            assert (type(expect_raised) is tuple \
+            and tuple(type(r) for r in expect_raised) == (type, str)), \
             f'Teacher bug; exception must be type, str or (type, str), got "{expect_raised}"'
 
         # Validate expected inputs
         expect_inputs = expectation.get(EXPECT_INPUTS)
         if expect_inputs is not None:
-            assert type(expect_inputs) in {list, tuple}, \
-            f'Teacher bug; inputs must be list or tuple, got "{expect_inputs}"'
-            expect_inputs = tuple(str(i) for i in expect_inputs)
+            if isinstance(expect_inputs, str):
+                expect_inputs = (expect_inputs, )
+            else:
+                assert type(expect_inputs) in {list, tuple}, \
+                f'Teacher bug; inputs must be list or tuple, got "{expect_inputs}"'
+                expect_inputs = tuple(str(i) for i in expect_inputs)
 
         # Validate check_value
         check_value = expectation.get(CHECK_VALUE)
@@ -94,42 +103,50 @@ def create_assertion(reference, expectations, label=None):
         assert error_raised is None, f'Teacher bug; {error_raised}'
 
         # Reference function behaves as expected, add to our saved cases.
-        # If both expected return value and expected exception are None, skip them
+
         expectation = {
-            ARGUMENTS: arguments,
-            EXPECT_PRINTED: expect_printed
         }
-        if expect_returned is not None or expect_raised is not None or expect_inputs is not None:
-            expect_returned = _serialize(expect_returned, check_value=check_value)
-            expectation.update({
-                EXPECT_RETURNED: expect_returned,
-                EXPECT_RAISED: expect_raised,
-                EXPECT_INPUTS: expect_inputs,
-                CHECK_VALUE: check_value
-            })
+        if arguments:
+            expectation[ARGUMENTS] = arguments
+        if expect_inputs:
+            expectation[EXPECT_INPUTS] = expect_inputs
+        if expect_printed:
+            expectation[EXPECT_PRINTED] = expect_printed
+        if expect_returned:
+            if not check_value:
+                expect_returned = type(expect_returned)
+            expectation[EXPECT_RETURNED] = expect_returned
+        if expect_raised:
+            expectation[EXPECT_RAISED] = expect_raised
+
+        if not check_value:
+            expect_returned[CHECK_VALUE] = False
+
         save_expectations.append(expectation)
 
-        # Teacher sanity, visually check the generated assertions
-        print(save_expectations)
-        # Load the previously created assertions from file
-        try:
-            with open(assertion_file, 'rb') as reader:
-                assertions = pickle.load(reader)
-        except FileNotFoundError:
-            assertions = dict()
-        except Exception as exc:
-            assert False, f'Teacher bug; unhandled {type(exc).__name__}: {exc}'
-        # Merge in the new expectations
-        assertions[label] = save_expectations
-        # Save the merged expectations to file
-        try:
-            with open(assertion_file, 'wb') as writer:
-                pickle.dump(assertions, writer)
-        except Exception as exc:
-            assert False, f'Teacher bug; unhandled {type(exc).__name__}: {exc}'
+    # Teacher sanity, visually check the generated assertions
+    if _debug:
+        pprint(save_expectations)
+
+    # Load the previously created assertions from file
+    try:
+        with open(assertion_file, 'rb') as reader:
+            assertions = pickle.load(reader)
+    except FileNotFoundError:
+        assertions = dict()
+    except Exception as exc:
+        assert False, f'Teacher bug; unhandled {type(exc).__name__}: {exc}'
+    # Merge in the new expectations
+    assertions[label] = save_expectations
+    # Save the merged expectations to file
+    try:
+        with open(assertion_file, 'wb') as writer:
+            pickle.dump(assertions, writer)
+    except Exception as exc:
+        assert False, f'Teacher bug; unhandled {type(exc).__name__}: {exc}'
 
 
-def check_assertion(assignment, label=None, fail_fast=True):
+def check_assertion(assignment, label=None, fail_fast=True, assertion_file=ASSERTION_FILE):
     """Run student's function, check expected behaviours, and report the findings"""
 
     # Validate function arguments
@@ -159,12 +176,12 @@ def check_assertion(assignment, label=None, fail_fast=True):
     for expectation in expectations:
         
         # Unpack the expectation
-        arguments = expectation.get(ARGUMENTS)
-        expect_printed = expectation.get(EXPECT_PRINTED)
-        expect_returned = expectation.get(EXPECT_RETURNED)
-        expect_raised = expectation.get(EXPECT_RAISED)
-        expect_inputs = expectation.get(EXPECT_INPUTS)
-        check_value = expectation.get(CHECK_VALUE)
+        arguments = deepcopy(expectation.get(ARGUMENTS))
+        expect_printed = deepcopy(expectation.get(EXPECT_PRINTED))
+        expect_returned = deepcopy(expectation.get(EXPECT_RETURNED))
+        expect_raised = deepcopy(expectation.get(EXPECT_RAISED))
+        expect_inputs = deepcopy(expectation.get(EXPECT_INPUTS))
+        check_value = deepcopy(expectation.get(CHECK_VALUE, True))
 
         # Count errors in this test case
         errors = 0
@@ -179,7 +196,8 @@ def check_assertion(assignment, label=None, fail_fast=True):
             _print(f'\n  with inputs {expect_inputs}', end='')
         _print(' ...', end='')
         printed, returned, raised = _call_function(assignment, arguments, expect_inputs)
-        returned = _serialize(returned, check_value=check_value)
+        if not check_value:
+            returned = _get_type(returned)
 
         # Check raised exception
         error_raised = _check_raised(expect_raised,  raised)
@@ -218,22 +236,29 @@ def check_assertion(assignment, label=None, fail_fast=True):
 
 # ---- Utility functions ----
 
-def _call_function(function, arguments, inputs=None):
+def _call_function(function, arguments=None, inputs=None):
     """Call function with given arguments, capture output, return value or exception"""
 
     returned = None
     raised = None
 
+    if not arguments:
+        arguments = tuple()
+
     orig_input = None
     if inputs is not None:
         input_index = 0
 
-        def _alt_input(_):
+        def _alt_input(*args, **kwargs):
             nonlocal input_index
             if input_index < len(inputs):
                 input_index += 1
-                return inputs[input_index - 1]
+                input = inputs[input_index - 1]
+                if not isinstance(input, str):
+                    input = str(input)
+                return input
             return ''
+
         orig_input = __builtins__['input']
         __builtins__['input'] = _alt_input
 
@@ -241,7 +266,7 @@ def _call_function(function, arguments, inputs=None):
         try:
             returned = function(*arguments)
         except Exception as exc:
-            raised = exc
+            raised = type(exc), str(exc)
         printed = _clean_output(buffer.getvalue())
 
     if orig_input is not None:
@@ -253,28 +278,47 @@ def _call_function(function, arguments, inputs=None):
 def _clean_output(printed):
     """Splits the output in lines, trims each of them, and filters out empty ones."""
 
+    if printed is None:
+        return None
+
     if type(printed) is str:
         printed = printed.split('\n')
+    elif _is_iterable(printed):
+        printed = (_clean_output(p) for p in printed)
+        printed = chain(*(p for p in printed if p is not None))
     else:
-        try:
-            printed = (str(p) for p in printed)
-        except TypeError:
-            printed = (str(printed), )
-    
-    printed = (line.strip() for line in printed)
-    printed = (line for line in printed if len(line) > 0 and line[0] != '#')
-    return tuple(printed)
+        assert False, f'Teacher bug; printed output must be None, str, or iterable of those'
+
+    if printed:
+        printed = (line.strip() for line in printed if line is not None)
+        printed = (line for line in printed if len(line) > 0 and line[0] != '#')
+        printed = tuple(printed)
+    return printed or None
 
 
 def _check_printed(expect, test, *, subject='Printed output'):
     """Check if the printed lines matches the expectation strings and/or regexes"""
 
     errors = []
+
+    if expect is None:
+        if test is not None:
+            errors.append(f'{subject} was unexpected')
+            _error(errors[0])
+            return '\n'.join(errors)
+        return None
+
+    elif test is None:
+        errors.append(f'{subject} was expected, but got nothing')
+        _error(errors[0])
+        return '\n'.join(errors)
+
     for pattern, line in zip_longest(expect, test):
         if pattern is None:
-            if test is None:
-                return None
-            errors.append(f'{subject} "{test}" was unexpected')
+            errors.append(f'{subject} "{line}" was unexpected')
+            continue
+        if line is None:
+            errors.append(f'{subject} "{pattern}" was expected')
             continue
 
         expect_type = str
@@ -317,7 +361,7 @@ def _check_printed(expect, test, *, subject='Printed output'):
             ('Expected', expect, sys.stdout)
         ):
             print(f'{which}:', file=where)
-            
+
             if len(lines) == 0:
                 print('<empty>', file=where)
             for line in lines:
@@ -337,34 +381,53 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
     if _depth <= 0:
         return f'{subject} reached maximum depth of {MAX_DEPTH}'
 
+    if expect is None:
+        if test is not None:
+            return f'{subject} was {type(test).__name__} {test!r} but None was expected'
+        return
+    elif test is None:
+        return f'{subject} was None but {type(expect).__name__} {expect!r} was expected'
+
     expect_type = type(expect)
     if not isinstance(test, expect_type):
-        return f'{subject} was {type(test).__name__} {test}' \
-               + f' but a value of type {expect_type} was expected' 
-    if expect_type is str:
+        return f'{subject} was {type(test).__name__} {test!r}' \
+               + f' but a value of type {expect_type.__name__} was expected'
+
+    if check_value and expect_type is str:
         return _check_pattern(expect, test, subject=subject)
-    if expect_type is float:
+
+    if check_value and expect_type is float:
         if f'{expect:.6f}' != f'{test:.6f}':
-            return f'{subject} {type(test).__name__} {test} is unequal' \
-                   + f' to expected {expect_type.__name__} {expect}'
+            return f'{subject} {type(test).__name__} {test!r} is unequal' \
+                   + f' to expected {expect_type.__name__} {expect!r}'
         else:
             return None
 
     if _is_iterable(expect):
         if not _is_iterable(test):
-            return f'{subject} {type(test).__name__} {test} expected to be iterable'
+            return f'{subject} {type(test).__name__} {test!r} expected to be iterable'
         
         if _is_dict_like(expect):
             if not _is_dict_like(test):
-                return f'{subject} {type(test).__name__} {test} expected to be dict-like'
+                return f'{subject} {type(test).__name__} {test!r} expected to be dict-like'
             indices = sorted(expect.keys())
             if indices != sorted(test.keys()):
-                return f'{subject} {type(test).__name__} {test} expected to contain keys ' \
+                return f'{subject} {type(test).__name__} {test!r} expected to contain key(s) ' \
                        + ', '.join(f'{idx!r}' for idx in indices)
-            if test == expect:
+            if check_value:
+                if test == expect:
+                    return None
+                return f'{subject} {type(test).__name__} expected to contain' \
+                     f' {expect!r}, but got {test!r}'
+            else:
+                for i in indices:
+                    expect_item = expect[i]
+                    test_item = test[i]
+                    msg = _check_returned(expect_item, test_item, subject='', check_value=check_value, _depth=_depth - 1)
+                    if msg:
+                        return f'{subject} {type(test).__name__} {test!r} at key {i!r}:{msg}'
                 return None
-            return f'{subject} {type(test).__name__} dictionary expected to contain' \
-                 f' {expect}, but got {test}'
+
         else:
             indices = list(range(len(expect)))
             expect_list = list(expect)
@@ -373,38 +436,48 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
         expect_len = len(expect_list)
         test_len = len(test_list)
         if expect_len != test_len:
-            return f'{subject} {type(test).__name__} {test} expected to contain' \
+            return f'{subject} {type(test).__name__} {test!r} expected to contain' \
                  f' {expect_len} items, but got {test_len}'
 
         for i, expect_item, test_item in zip(indices, expect_list, test_list):
-            msg = _check_returned(expect_item, test_item, subject=subject, check_value=check_value, _depth=_depth - 1)
+            msg = _check_returned(expect_item, test_item, subject='', check_value=check_value, _depth=_depth - 1)
             if msg:
-                return f'{subject} {type(test).__name__} {test} at index {i!r}: {msg}'
+                return f'{subject} {type(test).__name__} {test!r} at index {i!r}:{msg}'
 
     elif check_value and expect != test:
-        return f'{subject} {type(test).__name__} {test} is unequal' \
-               + f' to expected {expect_type.__name__} {expect}'
+        return f'{subject} {type(test).__name__} {test!r} is unequal' \
+               + f' to expected {expect_type.__name__} {expect!r}'
 
 
 def _check_raised(expect, test, *, subject='Exception'):
     """Check that the raised exception, if any, matches the expected exception"""
 
+    if expect is not None and isinstance(expect, BaseException):
+        expect = type(expect), str(expect)
+
+    if test is not None and isinstance(test, BaseException):
+        test = type(test), str(test)
+
     if expect is None and test is not None:
-        return f'{subject} {type(test).__name__} was raised but not expected: {str(test)}'
+        raised_type, raised_str = test
+        return f'{subject} {raised_type.__name__} was raised but not expected: {raised_str}'
     
     elif expect is not None and test is None:
-        return f'{subject} {expect[0]} was expected but not raised'
+        expect_type, expect_pattern = expect
+        return f'{subject} {expect_type.__name__} was expected but not raised'
     
     elif test is not None:  # and expect is not None
         expect_type, expect_pattern = expect
+        raised_type, raised_str = test
         
         error = None
         if expect_type is not None:
-            if expect_type != type(test).__name__:
-                error = f'{subject} {type(test).__name__} was raised,' \
-                        + f' but {expect_type} was expected'
-        elif expect_pattern is not None:
-            error = _check_pattern(expect_pattern, str(test), subject=subject)
+            if expect_type != raised_type:
+                error = f'{subject} {raised_type.__name__} was raised,' \
+                        + f' but {expect_type.__name__} was expected'
+
+        if error is None and expect_pattern is not None:
+            error = _check_pattern(expect_pattern, raised_str, subject=subject)
 
         return error
 
@@ -417,18 +490,17 @@ def _check_pattern(expect, test, subject=''):
             return None
         return f'{subject} "{test}" was unexpected'
     else:
-        expect = _make_pattern(expect)
-        if type(expect) is str:
+        expect, regex = _make_pattern(expect)
+        if regex is None:
             if test is None:
-                return f'{subject} " was expected to include the string "{expect}"'
+                return f'{subject} expected a string matching "{expect}", but got None'
             if expect != test:
                 return f'{subject} "{test}" doesn\'t match expected string "{expect}"'
         else:
-            expect, regex = expect
             if test is None:
-                return f'{subject} " was expected to include something to match "{expect}"'
+                return f'{subject} expected to match the regular expression "{expect}", but got None'
             if regex.match(test) is None:
-                return f'{subject} "{test}" doesn\'t match expected regex "{expect}"'
+                return f'{subject} "{test}" doesn\'t match the regular expression "{expect}"'
 
 
 # Regular expression to match regular expressions
@@ -441,7 +513,7 @@ def _make_pattern(pattern):
     match = _meta_rex.match(pattern)
     if match is None:
         # Not a regex
-        return pattern
+        return pattern, None
     
     regex = match.group(1).replace(r'\/', '/')
     flags = sum(re.RegexFlag[f.upper()] for f in match.group(2))
@@ -469,20 +541,28 @@ def _is_dict_like(it):
         and callable(getattr(it, 'values', False))
 
 
-def _serialize(expect_returned, check_value=True, _depth=MAX_DEPTH):
+def _get_type(returned, _depth=MAX_DEPTH):
     if _depth <= 0:
         raise RuntimeError(f'_serialize reached maximum depth of {MAX_DEPTH}')
 
-    if check_value:
-        return expect_returned
+    expect_type = type(returned)
 
-    expect_type = type(expect_returned)
-    if not _is_iterable(expect_returned):
+    # Simple type
+    if isinstance(returned, str) or not _is_iterable(returned):
         return expect_type
+
     # Recursive
-    return expect_type(_serialize(er, check_value=False, _depth=_depth - 1) for er in expect_returned)
+    if _is_dict_like(returned):
+        return expect_type(zip(
+            returned.keys(),
+            (_get_type(v, _depth=_depth - 1)
+             for v in returned.values())
+        ))
+
+    return expect_type(
+        _get_type(er, _depth=_depth - 1)
+        for er in returned
+    )
 
 
 print('Assertions imported OK')
-
-
