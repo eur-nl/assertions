@@ -220,6 +220,26 @@ class TestAssertions(TestCase):
         self.assertEqual(stdout, '')
         self.assertEqual(stderr, '')
 
+    def test_check_printed_none_empty(self):
+        with StringIO() as out, StringIO() as err, \
+             redirect_stdout(out), redirect_stderr(err):
+            errors = assertions._check_printed(None, (), subject='SUBJECT')
+            stdout = out.getvalue()
+            stderr = err.getvalue()
+        self.assertIsNone(errors)
+        self.assertEqual(stdout, '')
+        self.assertEqual(stderr, '')
+
+    def test_check_printed_empty_none(self):
+        with StringIO() as out, StringIO() as err, \
+             redirect_stdout(out), redirect_stderr(err):
+            errors = assertions._check_printed((), None, subject='SUBJECT')
+            stdout = out.getvalue()
+            stderr = err.getvalue()
+        self.assertIsNone(errors)
+        self.assertEqual(stdout, '')
+        self.assertEqual(stderr, '')
+
     def test_check_printed_none_some(self):
         with StringIO() as out, StringIO() as err, \
              redirect_stdout(out), redirect_stderr(err):
@@ -743,8 +763,6 @@ class TestAssertions(TestCase):
                     "unsupported operand type(s) for +: 'int' and 'str'")}]
 """)
         self.assertEqual(stderr, '')
-
-
 
 
     def test_create_assertion_call_by_reference_proper(self):

@@ -237,7 +237,7 @@ def check_assertion(assignment, label=None, fail_fast=True, assertion_file=ASSER
             _print()
 
         # Check printed lines, if applicable (expect_printed should not be empty string)
-        if expect_printed != '':
+        if expect_printed:
             error_printed = _check_printed(expect_printed, printed)
             if error_printed is not None:
                 errors += 1
@@ -321,6 +321,9 @@ def _check_printed(expect, test, *, subject='Printed output'):
     """Check if the printed lines matches the expectation strings and/or regexes"""
 
     errors = []
+
+    if not expect and not test:
+        return None
 
     if expect is None:
         if test is not None:
