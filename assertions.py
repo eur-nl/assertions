@@ -133,7 +133,7 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
             expectation[EXPECT_INPUTS] = expect_inputs
         if expect_printed:
             expectation[EXPECT_PRINTED] = expect_printed
-        if expect_returned:
+        if expect_returned is not None:
             if not check_value:
                 expect_returned = type(expect_returned)
             expectation[EXPECT_RETURNED] = expect_returned
