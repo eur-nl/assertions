@@ -11,7 +11,6 @@ from itertools import chain, zip_longest
 # Constants
 from pprint import pprint
 
-student_user = True
 ASSERTION_FILE = 'assertions.pickle'
 MAX_DEPTH = 20
 ARGUMENTS = 'arguments'
@@ -24,21 +23,21 @@ CHECK_VALUE = 'check_value'
 
 
 def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _debug=True, _lazy=False):
-    """Run teacher's function, check expectations, and store in assertions.pickle"""
+    """Run teacher's function, check expectations, and store in assertions file"""
 
     # Validate function arguments
 
     assert type(reference) is types.FunctionType, \
-        f'Teacher bug; reference must be a function, got {type(reference)}'
+    f'Teacher bug; reference must be a function, got {type(reference)}'
 
     assert isinstance(expectations, (list, tuple)), \
-        f'Teacher bug; expectations must be a list or tuple, got {type(expectations)}'
+    f'Teacher bug; expectations must be a list or tuple, got {type(expectations)}'
 
     assert type(_debug) is bool, \
-        f'Teacher bug; _debug must be a boolean, got {type(_debug)}'
+    f'Teacher bug; _debug must be a boolean, got {type(_debug)}'
 
     assert type(_lazy) is bool, \
-        f'Teacher bug; _lazy must be a boolean, got {type(_lazy)}'
+    f'Teacher bug; _lazy must be a boolean, got {type(_lazy)}'
 
     label = reference.__name__
 
@@ -51,7 +50,7 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
 
         # Validate whether expectation is dictionary
         assert isinstance(expectation, dict), \
-            f'Teacher bug; expectation should be dictionary, not {type(expectation)}'
+        f'Teacher bug; expectation should be dictionary, not {type(expectation)}'
 
         # Validate arguments, coerce it to tuple if necessary
         arguments = expectation.get(ARGUMENTS)
@@ -70,7 +69,7 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
             if isinstance(expect_inputs, str):
                 expect_inputs = (expect_inputs,)
             else:
-                assert type(expect_inputs) in {list, tuple}, \
+                assert isinstance(expect_inputs, (list, tuple)), \
                 f'Teacher bug; inputs must be list or tuple, got "{expect_inputs}"'
                 expect_inputs = tuple(str(i) for i in expect_inputs)
 
@@ -125,8 +124,7 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
             assert error_raised is None, f'Teacher bug; {error_raised}'
 
         # Reference function behaves as expected, add to our saved cases.
-        expectation = {
-        }
+        expectation = dict()
         if arguments:
             expectation[ARGUMENTS] = arguments
         if expect_inputs:
@@ -251,7 +249,8 @@ def check_assertion(assignment, label=None, fail_fast=True, assertion_file=ASSER
                 break
 
     # Raise assertion error if things went wrong, needed for nbgrader, or report success
-    assert total_errors == 0, 'Unfortunately you seem to have made one or more mistakes!' 
+    assert total_errors == 0, \
+    'Unfortunately you seem to have made one or more mistakes!'
     _print(f'\nWell done! You seem to have solved {label}!')
 
 
@@ -452,11 +451,24 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
                         return f'{subject} {type(test).__name__} {test!r} at key {i!r}:{msg}'
                 return None
 
-        else:
-            indices = list(range(len(expect)))
-            expect_list = list(expect)
-            test_list = list(test)
-        
+        elif _is_set_like(expect):
+            if not _is_set_like(test):
+                return f'{subject} {type(test).__name__} {test!r} expected to be set-like'
+            too_few = expect.difference(test)
+            too_many = test.difference(expect)
+            if too_few and not too_many:
+                return f'{subject} {type(test).__name__} {test!r} is missing expected member(s) {too_few!r}'
+            elif not too_few and too_many:
+                return f'{subject} {type(test).__name__} {test!r} has unexpected member(s) {too_many!r}'
+            elif too_few and too_many:
+                return f'{subject} {type(test).__name__} {test!r} is missing expected member(s) {too_few!r},' \
+                       f' and it has unexpected member(s) {too_many!r}'
+            return None
+
+        indices = list(range(len(expect)))
+        expect_list = list(expect)
+        test_list = list(test)
+
         expect_len = len(expect_list)
         test_len = len(test_list)
         if expect_len != test_len:
@@ -563,6 +575,12 @@ def _is_iterable(it):
 def _is_dict_like(it):
     return callable(getattr(it, 'keys', False)) \
         and callable(getattr(it, 'values', False))
+
+
+def _is_set_like(it):
+    return callable(getattr(it, 'union', False)) \
+        and callable(getattr(it, 'intersection', False)) \
+        and callable(getattr(it, 'difference', False))
 
 
 def _get_type(returned, _depth=MAX_DEPTH):

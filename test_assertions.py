@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-import sys
+
 from contextlib import redirect_stdout, redirect_stderr
-from copy import deepcopy
 from io import StringIO
 from itertools import product
 from pathlib import Path
 from pickle import load
-from pprint import pprint
 from unittest import TestCase
 
 import assertions
@@ -24,6 +22,8 @@ def _reference_printed(x, y=7):
 def _reference_returned(x, y=7):
     return x * y
 
+def _reference_returned_set(a, b):
+    return a ^ b
 
 def _reference_raised(x, y=0):
     return x // y
@@ -437,6 +437,22 @@ class TestAssertions(TestCase):
         errors = assertions._check_returned({1: 2, 3: 4}, {1: 2}, subject='SUBJECT')
         self.assertEqual(errors, 'SUBJECT dict {1: 2} expected to contain key(s) 1, 3')
 
+    def test_check_returned_set_right(self):
+        errors = assertions._check_returned({1, 2, 3}, {3, 2, 1}, subject='SUBJECT')
+        self.assertIsNone(errors)
+
+    def test_check_returned_set_too_few(self):
+        errors = assertions._check_returned({1, 2, 3}, {1, 2}, subject='SUBJECT')
+        self.assertEqual(errors, 'SUBJECT set {1, 2} is missing expected member(s) {3}')
+
+    def test_check_returned_set_too_many(self):
+        errors = assertions._check_returned({1, 2}, {1, 2, 4}, subject='SUBJECT')
+        self.assertEqual(errors, 'SUBJECT set {1, 2, 4} has unexpected member(s) {4}')
+
+    def test_check_returned_set_just_wrong(self):
+        errors = assertions._check_returned({1, 2, 3}, {1, 2, 4}, subject='SUBJECT')
+        self.assertEqual(errors, 'SUBJECT set {1, 2, 4} is missing expected member(s) {3}, and it has unexpected member(s) {4}')
+
     def test_check_returned_tuple_length(self):
         errors = assertions._check_returned((1, 2), (3, ), subject='SUBJECT')
         self.assertEqual(errors, 'SUBJECT tuple (3,) expected to contain 2 items, but got 1')
@@ -691,6 +707,36 @@ class TestAssertions(TestCase):
 
         self._delete_pickle()
 
+
+    def test_create_assertion_set_returned(self):
+        self._delete_pickle()
+
+        assertions.create_assertion(_reference_returned_set, (
+            {
+                assertions.ARGUMENTS: ({1, 2}, {1, 3}),
+                assertions.EXPECT_RETURNED: {2, 3}
+            },
+            {
+                assertions.ARGUMENTS: ({1, 2}, {2, 3}),
+                assertions.EXPECT_RETURNED: {1, 3}
+            }
+        ), assertion_file=_TEST_PICKLE_FILE, _debug=False)
+
+        pickled = self._load_pickle()
+        self.assertIsInstance(pickled, dict)
+        self.assertDictEqual(pickled, {
+            '_reference_returned_set': [
+                {
+                    'arguments': ({1, 2}, {1, 3}),
+                    'expect_returned': {2, 3}
+                 }, {
+                    'arguments': ({1, 2}, {2, 3}),
+                    'expect_returned': {1, 3}
+                 }
+            ]
+        })
+
+        self._delete_pickle()
 
 
     def test_create_assertion_debug(self):
