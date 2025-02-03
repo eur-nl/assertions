@@ -125,8 +125,7 @@ def create_assertion(reference, expectations, assertion_file=ASSERTION_FILE, _de
 
         # Reference function behaves as expected, add to our saved cases.
         expectation = dict()
-        if arguments:
-            expectation[ARGUMENTS] = arguments
+        expectation[ARGUMENTS] = arguments or ()
         if expect_inputs:
             expectation[EXPECT_INPUTS] = expect_inputs
         if expect_printed:
