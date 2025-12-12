@@ -12,6 +12,16 @@ import assertions
 
 _TEST_PICKLE_FILE = 'test_assertions.pickle'
 
+# Need an exception with a known stacktrace; put it at the beginning of the file
+# so the line numbers won't change.
+_EXCEPTION = None
+try:
+    raise Exception('Expected exception')
+except Exception as exc:
+    _EXCEPTION = exc
+
+
+
 # ---- Reference functions, i.e. simulate teacher and student solutions ----
 
 
@@ -166,17 +176,16 @@ class TestAssertions(TestCase):
         self.assertIsNone(raised)
 
     def test_call_function_raise(self):
+        exc = Exception('Expected exception')
         def f():
-            raise Exception('Expected exception')
+            raise exc
 
         printed, returned, raised = assertions._call_function(f)
         self.assertIsNone(printed)
         self.assertIsNone(returned)
         self.assertIsNotNone(raised)
-        self.assertIsInstance(raised, tuple)
-        self.assertEqual(len(raised), 2)
-        self.assertEqual(raised[0], Exception)
-        self.assertEqual(raised[1], 'Expected exception')
+        self.assertIsInstance(raised, BaseException)
+        self.assertEqual(raised, exc)
 
     # ---- Test _clean_output() ----
 
@@ -506,23 +515,29 @@ class TestAssertions(TestCase):
         self.assertIsNone(errors)
 
     def test_check_raised_none_some(self):
-        errors = assertions._check_raised(None, Exception('Expected exception'), subject='SUBJECT')
-        self.assertEqual(errors, 'SUBJECT Exception was raised but not expected: Expected exception')
+        errors = assertions._check_raised(None, _EXCEPTION, subject='SUBJECT')
+        self.assertIsInstance(errors, str)
+        errors = tuple(filter(bool, errors.split('\n')))
+        self.assertEqual(len(errors), 4)
+        self.assertEqual(errors[0], 'SUBJECT An unexpected exception was raised...')
+        self.assertEqual(errors[1], 'Exception: Expected exception')
+        self.assertEqual(errors[2], f'  File "{__file__}", line 19, in <module>')
+        self.assertEqual(errors[3], '    raise Exception(\'Expected exception\')')
 
     def test_check_raised_some_none(self):
-        errors = assertions._check_raised(Exception('Expected exception'), None, subject='SUBJECT')
+        errors = assertions._check_raised(_EXCEPTION, None, subject='SUBJECT')
         self.assertEqual(errors, 'SUBJECT Exception was expected but not raised')
 
     def test_check_raised_wrong_type(self):
-        errors = assertions._check_raised(Exception('Expected exception'), TypeError('Unexpected exception'), subject='SUBJECT')
+        errors = assertions._check_raised(_EXCEPTION, TypeError('Unexpected exception'), subject='SUBJECT')
         self.assertEqual(errors, 'SUBJECT TypeError was raised, but Exception was expected')
 
     def test_check_raised_wrong_text(self):
-        errors = assertions._check_raised(Exception('Expected exception'), Exception('Unexpected exception'), subject='SUBJECT')
+        errors = assertions._check_raised(_EXCEPTION, Exception('Unexpected exception'), subject='SUBJECT')
         self.assertEqual(errors, 'SUBJECT "Unexpected exception" doesn\'t match expected string "Expected exception"')
 
     def test_check_raised_right(self):
-        errors = assertions._check_raised(Exception('Expected exception'), Exception('Expected exception'), subject='SUBJECT')
+        errors = assertions._check_raised(_EXCEPTION, Exception('Expected exception'), subject='SUBJECT')
         self.assertIsNone(errors)
 
     # ---- Test _check_pattern() ----

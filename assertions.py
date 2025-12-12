@@ -2,6 +2,7 @@ import io
 import pickle
 import re
 import sys
+import traceback
 import types
 
 from contextlib import redirect_stdout
@@ -218,7 +219,7 @@ def check_assertion(assignment, label=None, fail_fast=True, assertion_file=ASSER
             returned = _get_type(returned)
 
         # Check raised exception
-        error_raised = _check_raised(expect_raised,  raised)
+        error_raised = _check_raised(expect_raised, raised)
         if error_raised is not None:
             errors += 1
             _print()
@@ -285,7 +286,7 @@ def _call_function(function, arguments=None, inputs=None):
         try:
             returned = function(*arguments)
         except Exception as exc:
-            raised = type(exc), str(exc)
+            raised = exc  # type(exc), str(exc)
         printed = _clean_output(buffer.getvalue())
 
     if orig_input is not None:
@@ -484,18 +485,23 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
                + f' to expected {expect_type.__name__} {expect!r}'
 
 
-def _check_raised(expect, test, *, subject='Exception'):
+def _check_raised(expect, test, *, subject='Oops!'):
     """Check that the raised exception, if any, matches the expected exception"""
 
     if expect is not None and isinstance(expect, BaseException):
         expect = type(expect), str(expect)
 
+    trace = '\n'
     if test is not None and isinstance(test, BaseException):
+        trace += ''.join(traceback.format_tb(test.__traceback__))
         test = type(test), str(test)
 
     if expect is None and test is not None:
         raised_type, raised_str = test
-        return f'{subject} {raised_type.__name__} was raised but not expected: {raised_str}'
+        return '\n'.join((
+            f'{subject} An unexpected exception was raised...',
+            f'{raised_type.__name__}: {raised_str}' + trace
+        ))
     
     elif expect is not None and test is None:
         expect_type, expect_pattern = expect
