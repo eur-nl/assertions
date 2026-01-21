@@ -226,6 +226,13 @@ def check_assertion(assignment, label=None, fail_fast=True, assertion_file=ASSER
             _error(error_raised)
             _print()
 
+        # Check printed lines, if applicable (expect_printed should not be empty string)
+        if expect_printed:
+            error_printed = _check_printed(expect_printed, printed)
+            if error_printed is not None:
+                errors += 1
+                _print()
+
         # Check returned value
         error_returned = _check_returned(expect_returned, returned, check_value=check_value)
         if error_returned is not None:
@@ -233,13 +240,6 @@ def check_assertion(assignment, label=None, fail_fast=True, assertion_file=ASSER
             _print()
             _error(error_returned)
             _print()
-
-        # Check printed lines, if applicable (expect_printed should not be empty string)
-        if expect_printed:
-            error_printed = _check_printed(expect_printed, printed)
-            if error_printed is not None:
-                errors += 1
-                _print()
 
         if errors == 0:
             _print(' OK')
@@ -404,16 +404,19 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
     if _depth <= 0:
         return f'{subject} reached maximum depth of {MAX_DEPTH}'
 
+    test_str = type(test).__name__ + ' ' + repr(test)
+    if test == ...:
+        test_str = '...'
     if expect is None:
         if test is not None:
-            return f'{subject} was {type(test).__name__} {test!r} but None was expected'
+            return f'{subject} was {test_str} but None was expected'
         return
     elif test is None:
         return f'{subject} was None but {type(expect).__name__} {expect!r} was expected'
 
     expect_type = type(expect)
     if not isinstance(test, expect_type):
-        return f'{subject} was {type(test).__name__} {test!r}' \
+        return f'{subject} was {test_str}' \
                + f' but a value of type {expect_type.__name__} was expected'
 
     if check_value and expect_type is str:
@@ -421,21 +424,21 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
 
     if check_value and expect_type is float:
         if f'{expect:.6f}' != f'{test:.6f}':
-            return f'{subject} {type(test).__name__} {test!r} is unequal' \
+            return f'{subject} {test_str} is unequal' \
                    + f' to expected {expect_type.__name__} {expect!r}'
         else:
             return None
 
     if _is_iterable(expect):
         if not _is_iterable(test):
-            return f'{subject} {type(test).__name__} {test!r} expected to be iterable'
+            return f'{subject} {test_str} expected to be iterable'
         
         if _is_dict_like(expect):
             if not _is_dict_like(test):
-                return f'{subject} {type(test).__name__} {test!r} expected to be dict-like'
+                return f'{subject} {test_str} expected to be dict-like'
             indices = sorted(expect.keys())
             if indices != sorted(test.keys()):
-                return f'{subject} {type(test).__name__} {test!r} expected to contain key(s) ' \
+                return f'{subject} {test_str} expected to contain key(s) ' \
                        + ', '.join(f'{idx!r}' for idx in indices)
             if check_value:
                 if test == expect:
@@ -448,20 +451,20 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
                     test_item = test[i]
                     msg = _check_returned(expect_item, test_item, subject='', check_value=check_value, _depth=_depth - 1)
                     if msg:
-                        return f'{subject} {type(test).__name__} {test!r} at key {i!r}:{msg}'
+                        return f'{subject} {test_str} at key {i!r}:{msg}'
                 return None
 
         elif _is_set_like(expect):
             if not _is_set_like(test):
-                return f'{subject} {type(test).__name__} {test!r} expected to be set-like'
+                return f'{subject} {test_str} expected to be set-like'
             too_few = expect.difference(test)
             too_many = test.difference(expect)
             if too_few and not too_many:
-                return f'{subject} {type(test).__name__} {test!r} is missing expected member(s) {too_few!r}'
+                return f'{subject} {test_str} is missing expected member(s) {too_few!r}'
             elif not too_few and too_many:
-                return f'{subject} {type(test).__name__} {test!r} has unexpected member(s) {too_many!r}'
+                return f'{subject} {test_str} has unexpected member(s) {too_many!r}'
             elif too_few and too_many:
-                return f'{subject} {type(test).__name__} {test!r} is missing expected member(s) {too_few!r},' \
+                return f'{subject} {test_str} is missing expected member(s) {too_few!r},' \
                        f' and it has unexpected member(s) {too_many!r}'
             return None
 
@@ -472,16 +475,16 @@ def _check_returned(expect, test, *, subject='Returned value', check_value=True,
         expect_len = len(expect_list)
         test_len = len(test_list)
         if expect_len != test_len:
-            return f'{subject} {type(test).__name__} {test!r} expected to contain' \
+            return f'{subject} {test_str} expected to contain' \
                  f' {expect_len} items, but got {test_len}'
 
         for i, expect_item, test_item in zip(indices, expect_list, test_list):
             msg = _check_returned(expect_item, test_item, subject='', check_value=check_value, _depth=_depth - 1)
             if msg:
-                return f'{subject} {type(test).__name__} {test!r} at index {i!r}:{msg}'
+                return f'{subject} {test_str} at index {i!r}:{msg}'
 
     elif check_value and expect != test:
-        return f'{subject} {type(test).__name__} {test!r} is unequal' \
+        return f'{subject} {test_str} is unequal' \
                + f' to expected {expect_type.__name__} {expect!r}'
 
 

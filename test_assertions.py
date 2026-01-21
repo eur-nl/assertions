@@ -482,6 +482,18 @@ class TestAssertions(TestCase):
         errors = assertions._check_returned((1, 2, (3, 4)), (1, 2, (3, 5)), subject='SUBJECT')
         self.assertEqual(errors, 'SUBJECT tuple (1, 2, (3, 5)) at index 2: tuple (3, 5) at index 1: int 5 is unequal to expected int 4')
 
+    def test_check_returned_ellipsis_right(self):
+        errors = assertions._check_returned(..., ..., subject='SUBJECT')
+        self.assertIsNone(errors)
+
+    def test_check_returned_ellipsis_wrong_single(self):
+        errors = assertions._check_returned(0, ..., subject='SUBJECT')
+        self.assertEqual(errors, 'SUBJECT was ... but a value of type int was expected')
+
+    def test_check_returned_ellipsis_wrong_multi(self):
+        errors = assertions._check_returned((0, 1), (0, ...), subject='SUBJECT')
+        self.assertEqual(errors, 'SUBJECT tuple (0, Ellipsis) at index 1: was ... but a value of type int was expected')
+
     # ---- Test _check_returned() with check_value=False ----
 
     def test_check_returned_type_only_simple(self):
